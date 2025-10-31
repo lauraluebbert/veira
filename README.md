@@ -7,7 +7,7 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
 ## Directory structure
 
 ```text
-└── lauraluebbert-veira/
+└── veira/
     ├── README.md
     ├── LICENSE
     ├── notebooks/
