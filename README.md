@@ -17,6 +17,7 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
     │   ├── 4_test-train-split.ipynb
     │   ├── rag_build_vectorstore_sentinel.ipynb
     │   └── run_rf_model.ipynb
+    │   └── plot_prediction_results.ipynb
     └── src/
         ├── build_rag_vectorstore.py
         ├── llm_generate_training_summary.py
@@ -43,6 +44,9 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
   Converts per‑patient rows to text, embeds them, and builds a vector store to enable retrieval‑augmented evaluation.
 * `run_rf_model.ipynb`  
   Trains and evaluates a random‑forest baseline for viral vs. non‑viral prediction; produces ROC/confusion plots, feature importances, ablations, and prediction exports.
+* `plot_prediction_results.ipynb`  
+  Visualizes and compares prediction outputs from all models and hybrid approaches (e.g., probability distributions, sequencing priority summaries).
+  
 
 #### `src/`
 
@@ -53,7 +57,7 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
 * `llm_system_prompt.py`  
   Cleans field definitions from the data dictionary and defines reusable system prompts for model runs.
 * `model_llm.py`  
-  Driver for LLM‑based predictions with optional knowledge summaries and retrieval; parses structured outputs and saves results.
+  Driver for LLM‑based predictions with optional knowledge summaries and retrieval.
 * `model_llm_rag_funcs.py`  
   Helper functions to load the vector store, embed queries, retrieve nearest neighbors, and format retrieved context.
 * `model_rf.py`  
