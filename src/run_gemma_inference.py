@@ -118,13 +118,12 @@ result_file.close()
 # Save all preds
 pickle.dump(
     {'prob_preds': prob_preds, 'binary_preds': binary_preds, 'labels': labels},
-    open('results_gemma3_grpo_testset_9_2_50.pkl', 'wb')
+    open(f'{configs['eval']['eval_name']}.pkl', 'wb')
 )
 
 if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
     clean_probs = [x for x in prob_preds if isinstance(x, float)]
     if len(clean_probs) == len(prob_preds):
-        import pdb; pdb.set_trace()
         print("AUC:", roc_auc_score(labels, prob_preds))
     print("Accuracy:", accuracy_score(labels, [int(x) for x in binary_preds]))
 

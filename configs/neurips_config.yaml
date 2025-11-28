@@ -1,3 +1,11 @@
 model:
   base_model: "google/gemma-3-4b-it"
   lora_repo: "Sentinel-AI/neurips_grpo_model"
+  device: "cuda:0"
+  max_new_tokens: "X"
+
+data:
+  train_test_data_folder: "/ewsc/lluebber/projects/snow/data/test_train_splits/"
+
+eval:
+  eval_name: "benchmark_output"
