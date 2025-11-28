@@ -4,7 +4,7 @@ import torch
 from peft import PeftModel
 from data.dataset import InferenceDataLoader
 from tqdm import tqdm
-from utils.util import extract_prob
+from utils.utils import extract_prob
 from sklearn.metrics import roc_auc_score, accuracy_score
 import os
 import pickle
@@ -34,7 +34,7 @@ model.eval().to(model_device)
 
 test_dataloader = InferenceDataLoader(configs['data']['train_test_data_folder']).test_dataloader()
 
-###Step 3: 
+###Step 3: Set up results file and see if any results have already been generated
 
 name_result = configs['eval']['eval_name']
 
@@ -65,6 +65,7 @@ else:
     finished_files = []
     result_file = open(name_result, 'w')  
 
+###Step 4: Inference!
 
 for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_dataloader))):
         id = answers[0][1]
@@ -84,16 +85,14 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
         attention_mask = prompt_enc["attention_mask"][keep_idx].to(model_device, non_blocking=True)
         kept_answers = [answers[i] for i in keep_idx]
 
-
         gen_out = policy_model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=configs['model']['max_new_tokens'],
                 do_sample=False,
                 eos_token_id=list(stop_ids),
-                # eos_token_id=tokenizer.eos_token_id,
                 pad_token_id=tokenizer.eos_token_id,
-                return_dict_in_generate=True,         # NEW
+                return_dict_in_generate=True,       
             )
 
         explore_generations = gen_out.sequences
@@ -122,6 +121,12 @@ pickle.dump(
     open('results_gemma3_grpo_testset_9_2_50.pkl', 'wb')
 )
 
+if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
+    clean_probs = [x for x in prob_preds if isinstance(x, float)]
+    if len(clean_probs) == len(prob_preds):
+        import pdb; pdb.set_trace()
+        print("AUC:", roc_auc_score(labels, prob_preds))
+    print("Accuracy:", accuracy_score(labels, [int(x) for x in binary_preds]))
 
 
 
