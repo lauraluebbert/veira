@@ -1,0 +1,3 @@
+model:
+  base_model: "google/gemma-3-4b-it"
+  lora_repo: "Sentinel-AI/neurips_grpo_model"
