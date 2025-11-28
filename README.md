@@ -10,6 +10,8 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
 └── veira/
     ├── README.md
     ├── LICENSE
+    ├── configs/
+    │   └── neurips_config.yaml
     ├── notebooks/
     │   ├── 1_data_cleanup.ipynb
     │   ├── 2_impute_missing.ipynb
@@ -25,6 +27,7 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
         ├── model_llm.py
         ├── model_llm_rag_funcs.py
         ├── model_rf.py
+        ├── run_gemma_inference.py
         └── utils.py
 ```
 
@@ -62,6 +65,8 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
   Helper functions to load the vector store, embed queries, retrieve nearest neighbors, and format retrieved context.
 * `model_rf.py`  
   End‑to‑end random‑forest pipeline: preprocessing, training/evaluation, ROC and confusion matrices, feature importances, and feature‑set ablations.
+* `run_gemma_inference.py`  
+  Code to pull and run inference on the RL-tuned gemma-3-4b-it instance described in the paper. To run it you need to run from the top directory "python -m src.run_gemma_inference configs/neurips_config.yaml"
 * `utils.py`  
   Shared helpers: feature selection (`data_to_use`), column dictionary lookups, row‑to‑JSON serialization, and approximate token length utilities.
 
