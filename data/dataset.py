@@ -1,12 +1,16 @@
 import torch 
-from src.model_rf import process_dataset
 from torch.utils.data import Dataset, DataLoader, Sampler
 import numpy as np
 import pandas as pd
+import pickle
 from typing import Callable, Optional
 from utils.utils import row_to_json
 from utils.create_vignette import generate_patient_data_vignette
 from utils.prompts import TASK_SPECIFIC_INSTRUCTIONS
+from src.utils import data_to_use
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
 
 class WrapperDataset(Dataset):
     """Wraps X (DataFrame) and y (Series) and builds JSON prompt + answer/meta."""
@@ -79,12 +83,31 @@ class InferenceDataset(Dataset):
     def __init__(
         self,
         train_test_data_folder: str,
+        data_path: str,
+        col_meta_path: str,
+        data_dictionary_path:str, 
         batch_size_train: int = 16,
         batch_size_eval: int = 8,
         num_workers: int = 0,
         tokenizer: Callable = None,
     ):
-        self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = process_dataset(train_test_data_folder,include = True)
+        self.data_df = pd.read_csv(data_path)
+        self.col_meta = pd.read_excel(col_meta_path)
+        self.data_dict = pd.read_csv(data_dictionary_path)
+
+        self.filtered_fields = self.data_dict[
+            self.data_dict["Variable / Field Name"].apply(
+                lambda x: any(str(x) in col for col in self.data_df.columns))
+        ][[
+            "Variable / Field Name",
+            "Field Label",
+            "Choices, Calculations, OR Slider Labels",
+            "Field Note"
+        ]]
+        self.field_definitions_list = self.filtered_fields.to_dict(orient="records") 
+        self.df_field_definitions = pd.DataFrame(eval(self.field_definitions_list))
+
+        self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = self.process_dataset(train_test_data_folder,include = True)
         self.batch_size_eval = batch_size_eval
         self.batch_size_train = batch_size_train
         self.num_workers = num_workers
@@ -118,7 +141,7 @@ class InferenceDataset(Dataset):
         for question, answer in batch:        
             question = question.replace('Patient data:', '').strip().replace('null', 'None')
             question = eval(question)
-            question = generate_patient_data_vignette(question)
+            question = generate_patient_data_vignette(question, self.df_field_definitions)
 
             chat_prompt = [
                 {'role': 'system', 'content': TASK_SPECIFIC_INSTRUCTIONS},
@@ -145,4 +168,61 @@ class InferenceDataset(Dataset):
             collate_fn=self.collate_fn,
             pin_memory=True,
         )
+
+    def process_dataset(self, train_test_data_folder, include = False):
+        pathogen = "all-viral"
+        num_cols_present, cat_cols_present = self.get_standard_features()
+
+        with open(f"{train_test_data_folder}/X_train_{pathogen}.pkl", "rb") as f:
+            X_train_raw = pickle.load(f)
+            # Drop record_id column
+            if "record_id" in X_train_raw.columns and include is False:
+                X_train_raw = X_train_raw.drop(columns=["record_id"])
+        with open(f"{train_test_data_folder}/X_test_{pathogen}.pkl", "rb") as f:
+            X_test_raw = pickle.load(f)
+            if "record_id" in X_test_raw.columns and include is False:
+                X_test_raw = X_test_raw.drop(columns=["record_id"])
+        with open(f"{train_test_data_folder}/y_train_{pathogen}.pkl", "rb") as f:
+            y_train = pickle.load(f)
+        with open(f"{train_test_data_folder}/y_test_{pathogen}.pkl", "rb") as f:
+            y_test = pickle.load(f)
+
+        # Fit preprocessor on training data and process X
+        local_preprocessor = self.preprocess_data(
+            num_cols_present, cat_cols_present).fit(X_train_raw)
+        X_train = local_preprocessor.transform(X_train_raw)
+        X_test = local_preprocessor.transform(X_test_raw)
+
+        return X_train, X_train_raw, X_test, X_test_raw, y_train, y_test
+
+    def get_standard_features(self):
+        data_df_models = data_to_use(self.data_df)
+
+        num_cols = self.col_meta[self.col_meta["data_type"] == "numerical"]["column"].values
+        num_cols_present = [
+            col for col in num_cols if col in data_df_models.columns]
+        cat_cols = self.col_meta[self.col_meta["data_type"]
+                            == "categorical"]["column"].values
+        cat_cols_present = [
+            col for col in cat_cols if col in data_df_models.columns]
+
+        return num_cols_present, cat_cols_present
+
+    def preprocess_data(self, num_cols_present, cat_cols_present):
+        # Preprocessing pipeline
+        numerical_pipeline = Pipeline([
+            ('scaler', StandardScaler())
+        ])
+
+        # One-hot encode categorical variables
+        categorical_pipeline = Pipeline([
+            ('encoder', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
+        ])
+
+        preprocessor = ColumnTransformer([
+            ('num', numerical_pipeline, num_cols_present),
+            ('cat', categorical_pipeline, cat_cols_present)
+        ])
+
+        return preprocessor
 

@@ -2,7 +2,7 @@ import os
 import re
 import json 
 import pandas as pd
-
+import pickle
 
 def extract_prob(text: str):
     PROB_RE = re.compile(r'(?mi)^\s*(?:p_virus|p_viral)\s*[:=]\s*([01](?:\.\d+)?|\.\d+)f?\s*$')
@@ -40,3 +40,4 @@ def row_to_json(row):
             patient[col] = value
 
     return json.dumps(patient, indent=2)
+

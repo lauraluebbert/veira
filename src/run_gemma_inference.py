@@ -21,12 +21,15 @@ if isinstance(eot_id, int) and eot_id != tokenizer.unk_token_id and eot_id >= 0:
 policy_model = AutoModelForCausalLM.from_pretrained(
     configs['model']['base_model'],
     torch_dtype=torch.bfloat16,
+    cache_dir=configs['model']['cache_dir']
 )
 
 model = PeftModel.from_pretrained(
     policy_model,
     configs['model']['lora_repo'],
+    cache_dir=configs['model']['cache_dir']
 )
+
 model_device = configs['model']['device']
 model.eval().to(model_device)
 
@@ -36,6 +39,9 @@ test_dataloader = InferenceDataset(train_test_data_folder = configs['data']['tra
                                    batch_size_train = configs['data']['batch_size_train'],
                                    batch_size_eval = configs['data']['batch_size_eval'],
                                    num_workers=configs['data']['num_workers'],
+                                   data_path = configs['data']['data_path'],
+                                   col_meta_path = configs['data']['col_meta_path'],
+                                   data_dictionary_path = configs['data']['data_dictionary_path'],
                                    tokenizer=tokenizer).test_dataloader()
 
 ###Step 3: Set up results file and see if any results have already been generated
@@ -122,7 +128,7 @@ result_file.close()
 # Save all preds
 pickle.dump(
     {'prob_preds': prob_preds, 'binary_preds': binary_preds, 'labels': labels},
-    open(f'{configs['eval']['eval_name']}.pkl', 'wb')
+    open(f'{configs["eval"]["eval_name"]}.pkl', 'wb')
 )
 
 if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
