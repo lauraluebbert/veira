@@ -2,7 +2,7 @@ import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from peft import PeftModel
-from data.dataset import InferenceDataLoader
+from data.dataset import InferenceDataset
 from tqdm import tqdm
 from utils.utils import extract_prob
 from sklearn.metrics import roc_auc_score, accuracy_score
@@ -32,7 +32,7 @@ model.eval().to(model_device)
 
 ###Step 2: Load in eval data in Inference DataLoader
 
-test_dataloader = InferenceDataLoader(configs['data']['train_test_data_folder']).test_dataloader()
+test_dataloader = InferenceDataset(configs['data']['train_test_data_folder']).test_dataloader()
 
 ###Step 3: Set up results file and see if any results have already been generated
 
