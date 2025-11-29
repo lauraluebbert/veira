@@ -64,11 +64,12 @@ if os.path.exists(name_result):
         pred_binary.append(int(float(binary)))
         label.append(int(true_label))
     
-    #Calculate AUC
-    auc = roc_auc_score(label, pred_prob)
-    accuracy = accuracy_score(label, pred_binary)
-    print(f'AUC: {auc}, Accuracy: {accuracy}')
-    # import pdb; pdb.set_trace()
+    if len(set(label)) > 20:
+        #Calculate AUC
+        auc = roc_auc_score(label, pred_prob)
+        accuracy = accuracy_score(label, pred_binary)
+        print(f'AUC: {auc}, Accuracy: {accuracy}')
+        # import pdb; pdb.set_trace()
 
     result_file = open(name_result, 'a')
 else:

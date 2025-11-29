@@ -105,7 +105,11 @@ class InferenceDataset(Dataset):
             "Field Note"
         ]]
         self.field_definitions_list = self.filtered_fields.to_dict(orient="records") 
-        self.df_field_definitions = pd.DataFrame(eval(self.field_definitions_list))
+        self.df_field_definitions = pd.DataFrame(self.field_definitions_list)
+        self.df_field_definitions = self.df_field_definitions.rename(columns={
+            "Variable / Field Name": "Field Name",
+            "Choices, Calculations, OR Slider Labels": "Choices"
+        })
 
         self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = self.process_dataset(train_test_data_folder,include = True)
         self.batch_size_eval = batch_size_eval
@@ -113,8 +117,8 @@ class InferenceDataset(Dataset):
         self.num_workers = num_workers
         self.tokenizer = tokenizer
 
-        self.ds_train = WrapperDataset(self.X_train, self.y_train)
-        self.ds_test = WrapperDataset(self.X_test, self.y_test)
+        self.ds_train = WrapperDataset(self.X_train_raw, self.y_train)
+        self.ds_test = WrapperDataset(self.X_test_raw, self.y_test)
 
     def train_dataloader(self):
         # build balanced batch sampler (50/50) for training
