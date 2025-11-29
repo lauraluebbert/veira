@@ -113,7 +113,10 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
 
         for (y_true, rec_id), txt in zip(kept_answers, batch_responses):
             p = extract_prob(txt)
-            b = int(p > 0.5)
+            try:
+                b = int(p > 0.5)
+            except Exception as e:
+                import pdb; pdb.set_trace()
 
             prob_preds.append(p)
             binary_preds.append(b)
