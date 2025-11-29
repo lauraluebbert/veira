@@ -1,13 +1,12 @@
 import torch 
 from src.model_rf import process_dataset
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, Sampler
 import numpy as np
 import pandas as pd
-import torch
-from torch.utils.data import Dataset, DataLoader, Sampler
 from typing import Callable, Optional
-from utils. import row_to_json, generate_patient_data_vignette, TASK_SPECIFIC_INSTRUCTIONS
+from utils.utils import row_to_json
 from utils.create_vignette import generate_patient_data_vignette
+from utils.prompts import TASK_SPECIFIC_INSTRUCTIONS
 
 class WrapperDataset(Dataset):
     """Wraps X (DataFrame) and y (Series) and builds JSON prompt + answer/meta."""

@@ -6,6 +6,10 @@ model:
 
 data:
   train_test_data_folder: "/ewsc/lluebber/projects/snow/data/test_train_splits/"
+  batch_size_train: 16
+  batch_size_eval: 8
+  num_workers: 0
 
 eval:
   eval_name: "benchmark_output"
+  device: "cuda:1"

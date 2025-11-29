@@ -32,7 +32,11 @@ model.eval().to(model_device)
 
 ###Step 2: Load in eval data in Inference DataLoader
 
-test_dataloader = InferenceDataset(configs['data']['train_test_data_folder']).test_dataloader()
+test_dataloader = InferenceDataset(train_test_data_folder = configs['data']['train_test_data_folder'],
+                                   batch_size_train = configs['data']['batch_size_train'],
+                                   batch_size_eval = configs['data']['batch_size_eval'],
+                                   num_workers=configs['data']['num_workers'],
+                                   tokenizer=tokenizer).test_dataloader()
 
 ###Step 3: Set up results file and see if any results have already been generated
 
