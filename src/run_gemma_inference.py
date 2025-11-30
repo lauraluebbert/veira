@@ -59,6 +59,8 @@ name_result = configs['eval']['eval_name']
 prob_preds = []
 binary_preds = []
 labels = []
+stability_scores = []
+modified_probability = []
 
 if os.path.exists(name_result):
     pred_prob = []
@@ -71,8 +73,8 @@ if os.path.exists(name_result):
         pred_prob.append(float(prob))
         pred_binary.append(int(float(binary)))
         label.append(int(true_label))
-    
-    if len(set(label)) > 20:
+
+    if len(set(label)) == len(test_dataloader):
         #Calculate AUC
         auc = roc_auc_score(label, pred_prob)
         accuracy = accuracy_score(label, pred_binary)
@@ -111,7 +113,8 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
                 do_sample=False,
                 eos_token_id=list(stop_ids),
                 pad_token_id=tokenizer.eos_token_id,
-                return_dict_in_generate=True,       
+                return_dict_in_generate=True, 
+                output_scores = True      
             )
 
         explore_generations = gen_out.sequences
@@ -121,8 +124,29 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
 
         raw_inputs = tokenizer.batch_decode(input_ids, skip_special_tokens = True)
         raw_outputs = tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+        scores = gen_out.scores
+        logits_t_b_v = torch.stack(scores, dim=0)
+        logits_b_t_v = logits_t_b_v.permute(1, 0, 2)
+        probs_b_t_v = logits_b_t_v.softmax(dim=-1)
+        max_probs_b_t = probs_b_t_v.max(dim=-1).values
 
-        for (y_true, rec_id), txt, ques, out in zip(kept_answers, batch_responses, raw_inputs, raw_outputs):
+        threshold = 0.99
+        # mask: positions where model was NOT trivially confident
+        interesting_mask_b_t = max_probs_b_t < threshold  # [B, T] bool
+
+        # To avoid division by zero if an example has all steps > threshold:
+        masked_max = torch.where(
+            interesting_mask_b_t,
+            max_probs_b_t,
+            torch.nan,   # mark "uninteresting" positions as NaN
+        )  # [B, T]
+
+        # Mean over only "interesting" positions for each example
+        stability_score = torch.nanmean(masked_max, dim=-1)  # [B]
+        # If an example had no interesting positions, nanmean will give NaN; you can replace:
+        stability_score = torch.nan_to_num(stability_score, nan=1.0)
+
+        for (y_true, rec_id), txt, ques, out, stability in zip(kept_answers, batch_responses, raw_inputs, raw_outputs, stability_score):
             p = extract_prob(txt)
             try:
                 b = int(p > 0.5)
@@ -132,8 +156,11 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
             prob_preds.append(p)
             binary_preds.append(b)
             labels.append(int(y_true))
+            w = stability.item()
+            stability_scores.append(w)
+            modified_probability.append(p * w + (1 - w) * 0.9)
 
-            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\t{ques.rstrip()}\t{out.rstrip()}\n')
+            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\t{w}\t{modified_probability[-1]}\t{ques.rstrip()}\t{out.rstrip()}\n')
             finished_files.append(rec_id)
 
         result_file.flush()
@@ -142,7 +169,7 @@ result_file.close()
 
 # Save all preds
 pickle.dump(
-    {'prob_preds': prob_preds, 'binary_preds': binary_preds, 'labels': labels},
+    {'prob_preds': prob_preds, 'binary_preds': binary_preds, 'labels': labels, 'stability_scores': stability_scores, 'modified_probability': modified_probability},
     open(f'{configs["eval"]["eval_name"]}.pkl', 'wb')
 )
 
@@ -150,7 +177,11 @@ if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
     clean_probs = [x for x in prob_preds if isinstance(x, float)]
     if len(clean_probs) == len(prob_preds):
         print("AUC:", roc_auc_score(labels, prob_preds))
+        print("Modified AUC:", roc_auc_score(labels, modified_probability))
+        #Take the AUCs of the patients where stability or confidence is high
+        for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+            filtered_probs = [mp for mp, ss in zip(modified_probability, stability_scores) if ss >= threshold]
+            filtered_labels = [l for mp, ss, l in zip(modified_probability, stability_scores, labels) if ss >= threshold]
+            print(f"Filtered AUC (stability >= {threshold}):", roc_auc_score(filtered_labels, filtered_probs))
+
     print("Accuracy:", accuracy_score(labels, [int(x) for x in binary_preds]))
-
-
-
