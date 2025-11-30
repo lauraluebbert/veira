@@ -1,0 +1,19 @@
+model:
+  base_model: "google/gemma-3-4b-it"
+  lora_repo: "Sentinel-AI/neurips_grpo_model"
+  device: "cuda:0"
+  max_new_tokens: 96
+  cache_dir: "/ewsc/yektefai/sentinel-checkpoints/GRPO-Neurips/"
+
+data:
+  train_test_data_folder: "/ewsc/lluebber/projects/snow/data/test_train_splits/"
+  data_path: "/ewsc/lluebber/projects/snow/data/SentinelNigeria_DATA_2025-05-02_1814_clean_imputed.csv"
+  col_meta_path: "/ewsc/lluebber/projects/snow/data_small/pathogen_metadata.xlsx"
+  data_dictionary_path: "/ewsc/lluebber/projects/snow/data/SentinelNigeria_DataDictionary_2025-05-02.csv"
+  batch_size_train: 16
+  batch_size_eval: 40
+  num_workers: 0
+
+eval:
+  eval_name: "benchmark_output_2"
+  device: "cuda:1"
