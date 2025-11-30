@@ -15,5 +15,5 @@ data:
   num_workers: 0
 
 eval:
-  eval_name: "benchmark_output"
+  eval_name: "benchmark_output_2"
   device: "cuda:1"

@@ -96,7 +96,7 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
         attention_mask = prompt_enc["attention_mask"][keep_idx].to(model_device, non_blocking=True)
         kept_answers = [answers[i] for i in keep_idx]
 
-        gen_out = policy_model.generate(
+        gen_out = model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
                 max_new_tokens=configs['model']['max_new_tokens'],
@@ -111,7 +111,7 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
         gen_ids  = explore_generations[:, prompt_len:]          # [B*K, L]
         batch_responses = tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
 
-        for (y_true, rec_id), txt in zip(kept_answers, batch_responses):
+        for (y_true, rec_id), txt, ques in zip(kept_answers, batch_responses, tokenizer.batch_decode(input_ids, skip_special_tokens = True)):
             p = extract_prob(txt)
             try:
                 b = int(p > 0.5)
@@ -122,7 +122,7 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
             binary_preds.append(b)
             labels.append(int(y_true))
 
-            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\n')
+            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\t{ques}\n')
             finished_files.append(rec_id)
 
         result_file.flush()

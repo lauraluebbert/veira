@@ -11,6 +11,8 @@ from src.utils import data_to_use
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
+import json
+import re
 
 class WrapperDataset(Dataset):
     """Wraps X (DataFrame) and y (Series) and builds JSON prompt + answer/meta."""
@@ -94,22 +96,7 @@ class InferenceDataset(Dataset):
         self.data_df = pd.read_csv(data_path)
         self.col_meta = pd.read_excel(col_meta_path)
         self.data_dict = pd.read_csv(data_dictionary_path)
-
-        self.filtered_fields = self.data_dict[
-            self.data_dict["Variable / Field Name"].apply(
-                lambda x: any(str(x) in col for col in self.data_df.columns))
-        ][[
-            "Variable / Field Name",
-            "Field Label",
-            "Choices, Calculations, OR Slider Labels",
-            "Field Note"
-        ]]
-        self.field_definitions_list = self.filtered_fields.to_dict(orient="records") 
-        self.df_field_definitions = pd.DataFrame(self.field_definitions_list)
-        self.df_field_definitions = self.df_field_definitions.rename(columns={
-            "Variable / Field Name": "Field Name",
-            "Choices, Calculations, OR Slider Labels": "Choices"
-        })
+        self.generate_field_definitions()
 
         self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = self.process_dataset(train_test_data_folder,include = True)
         self.batch_size_eval = batch_size_eval
@@ -142,7 +129,7 @@ class InferenceDataset(Dataset):
 
     def collate_fn(self, batch):
         prompts, answers = [], []
-        for question, answer in batch:        
+        for question, answer in batch:      
             question = question.replace('Patient data:', '').strip().replace('null', 'None')
             question = eval(question)
             question = generate_patient_data_vignette(question, self.df_field_definitions)
@@ -172,6 +159,26 @@ class InferenceDataset(Dataset):
             collate_fn=self.collate_fn,
             pin_memory=True,
         )
+
+    def generate_field_definitions(self):
+        self.filtered_fields = self.data_dict[
+            self.data_dict["Variable / Field Name"].apply(
+                lambda x: any(str(x) in col for col in self.data_df.columns))
+        ][[
+            "Variable / Field Name",
+            "Field Label",
+            "Choices, Calculations, OR Slider Labels",
+            "Field Note"
+        ]]
+        self.field_definitions_list = self.filtered_fields.to_dict(orient="records")
+        self.cleaned_field_definitions = [
+            self.clean_field_dict(d) for d in self.field_definitions_list]
+        self.field_definitions = json.dumps(self.cleaned_field_definitions)
+        self.df_field_definitions = pd.DataFrame(eval(self.field_definitions))
+        self.df_field_definitions = self.df_field_definitions.rename(columns={
+            "Variable / Field Name": "Field Name",
+            "Choices, Calculations, OR Slider Labels": "Choices"
+        })
 
     def process_dataset(self, train_test_data_folder, include = False):
         pathogen = "all-viral"
@@ -229,4 +236,48 @@ class InferenceDataset(Dataset):
         ])
 
         return preprocessor
+
+    def strip_html_and_whitespace(self, text):
+        """
+        Remove HTML tags and decode basic HTML entities, then strip whitespace.
+        """
+        if not isinstance(text, str):
+            return text
+        # Remove HTML tags
+        text = re.sub(r'<[^>]+>', '', text)
+        # Replace HTML entities for non-breaking space and quotes
+        text = text.replace('\\u00a0', ' ').replace('&nbsp;', ' ')
+        # Remove extra whitespace
+        text = text.strip()
+        # Remove any remaining curly braces and their contents (e.g., {participantid_country})
+        text = re.sub(r'\{.*?\}', '', text)
+        # Collapse multiple spaces
+        text = re.sub(r'\s+', ' ', text)
+        return text
+
+    def clean_field_dict(self, d):
+        cleaned = {}
+        for k, v in d.items():
+            # Remove keys with None, 'null' (as string), or NaN
+            if v is None or (isinstance(v, str) and v.strip().lower() == "null") or (isinstance(v, str) and v.strip().lower() == "nan") or pd.isna(v):
+                continue
+            # Shorten key names as specified
+            if k == "Variable / Field Name":
+                new_key = "Field Name"
+            elif k == "Choices, Calculations, OR Slider Labels":
+                new_key = "Choices"
+            else:
+                new_key = k
+            # Remove unnecessary backslashes
+            if isinstance(v, str):
+                v = v.replace("\\/", "/").replace('\\"', '"')
+            # For "Field Label" and "Field Note", strip HTML and whitespace
+            if new_key in ["Field Label", "Field Note"]:
+                v = self.strip_html_and_whitespace(v)
+            cleaned[new_key] = v
+        return cleaned
+
+
+
+
 

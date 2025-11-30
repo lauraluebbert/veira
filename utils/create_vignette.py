@@ -9,7 +9,7 @@ def find_keys_to_scan(data):
             keys_to_scan.append(key.split('___')[0])
         else:
             keys_to_scan.append(key)
-    return set(keys_to_scan)
+    return sorted(set(keys_to_scan))
 
 def gather_data_specific_key(data, query_key):
     results = []
