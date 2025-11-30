@@ -153,7 +153,7 @@ class InferenceDataset(Dataset):
     def test_dataloader(self):
         return DataLoader(
             self.ds_test,
-            batch_size=self.batch_size_train,
+            batch_size=self.batch_size_eval,
             shuffle=False,
             num_workers=self.num_workers,
             collate_fn=self.collate_fn,

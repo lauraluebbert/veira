@@ -7,12 +7,18 @@ from tqdm import tqdm
 from utils.utils import extract_prob
 from sklearn.metrics import roc_auc_score, accuracy_score
 import os
+os.environ["TORCHDYNAMO_DISABLE"] = "1"
 import pickle
 
 configs = yaml.load(open('configs/neurips_config.yaml'), Loader=yaml.FullLoader)
 
 ###Step 1: Load in model from HuggingFace
 tokenizer = AutoTokenizer.from_pretrained(configs['model']['base_model'])
+if tokenizer.pad_token_id is None:
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+    tokenizer.pad_token = tokenizer.eos_token
+PAD = tokenizer.pad_token_id
+
 stop_ids = {tokenizer.eos_token_id}
 eot_id = tokenizer.convert_tokens_to_ids("<end_of_turn>")
 if isinstance(eot_id, int) and eot_id != tokenizer.unk_token_id and eot_id >= 0:
@@ -21,12 +27,14 @@ if isinstance(eot_id, int) and eot_id != tokenizer.unk_token_id and eot_id >= 0:
 policy_model = AutoModelForCausalLM.from_pretrained(
     configs['model']['base_model'],
     torch_dtype=torch.bfloat16,
+    device_map=None,
     cache_dir=configs['model']['cache_dir']
 )
 
 model = PeftModel.from_pretrained(
     policy_model,
     configs['model']['lora_repo'],
+    device_map=None,
     cache_dir=configs['model']['cache_dir']
 )
 
@@ -111,7 +119,10 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
         gen_ids  = explore_generations[:, prompt_len:]          # [B*K, L]
         batch_responses = tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
 
-        for (y_true, rec_id), txt, ques in zip(kept_answers, batch_responses, tokenizer.batch_decode(input_ids, skip_special_tokens = True)):
+        raw_inputs = tokenizer.batch_decode(input_ids, skip_special_tokens = True)
+        raw_outputs = tokenizer.batch_decode(gen_ids, skip_special_tokens = True)
+
+        for (y_true, rec_id), txt, ques, out in zip(kept_answers, batch_responses, raw_inputs, raw_outputs):
             p = extract_prob(txt)
             try:
                 b = int(p > 0.5)
@@ -122,7 +133,7 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
             binary_preds.append(b)
             labels.append(int(y_true))
 
-            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\t{ques}\n')
+            result_file.write(f'{rec_id}\t{p}\t{b}\t{int(y_true)}\t{ques.rstrip()}\t{out.rstrip()}\n')
             finished_files.append(rec_id)
 
         result_file.flush()
