@@ -92,13 +92,19 @@ class InferenceDataset(Dataset):
         batch_size_eval: int = 8,
         num_workers: int = 0,
         tokenizer: Callable = None,
+        pathogen: str = "all-viral",
+        sheet_name: str = "columns_metadata",
     ):
         self.data_df = pd.read_csv(data_path)
-        self.col_meta = pd.read_excel(col_meta_path)
+        self.col_meta = pd.read_excel(col_meta_path, sheet_name=sheet_name)
         self.data_dict = pd.read_csv(data_dictionary_path)
         self.generate_field_definitions()
 
-        self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = self.process_dataset(train_test_data_folder,include = True)
+        self.pathogen = pathogen
+        self.sheet_name = sheet_name
+
+        self.X_train, self.X_train_raw, self.X_test, self.X_test_raw, self.y_train, self.y_test = self.process_dataset(
+            train_test_data_folder, include=True)
         self.batch_size_eval = batch_size_eval
         self.batch_size_train = batch_size_train
         self.num_workers = num_workers
@@ -181,7 +187,7 @@ class InferenceDataset(Dataset):
         })
 
     def process_dataset(self, train_test_data_folder, include = False):
-        pathogen = "all-viral"
+        pathogen = self.pathogen if hasattr(self, "pathogen") else "all-viral"
         num_cols_present, cat_cols_present = self.get_standard_features()
 
         with open(f"{train_test_data_folder}/X_train_{pathogen}.pkl", "rb") as f:

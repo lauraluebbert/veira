@@ -44,6 +44,8 @@ model.eval().to(model_device)
 ###Step 2: Load in eval data in Inference DataLoader
 
 test_dataloader = InferenceDataset(train_test_data_folder = configs['data']['train_test_data_folder'],
+                                   pathogen = configs['data']['pathogen'],
+                                   sheet_name = configs['data']['sheet_name'],
                                    batch_size_train = configs['data']['batch_size_train'],
                                    batch_size_eval = configs['data']['batch_size_eval'],
                                    num_workers=configs['data']['num_workers'],

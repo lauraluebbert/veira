@@ -130,8 +130,10 @@ The following fields typically require updating:
 
 - Data section
   - train_test_data_folder
+  - pathogen
   - data_path
   - col_meta_path
+  - sheet_name
   - data_dictionary_path
 
 - Model section
