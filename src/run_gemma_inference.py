@@ -7,22 +7,23 @@ from tqdm import tqdm
 from utils.utils import extract_prob
 from sklearn.metrics import roc_auc_score, accuracy_score
 import os
+import glob
+from peft import get_peft_model, LoraConfig
+
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
 import pickle
 
 configs = yaml.load(open('configs/neurips_config.yaml'), Loader=yaml.FullLoader)
 
-###Step 1: Load in model from HuggingFace
+###Step 1: Load model (prefer local .ckpt via load_model, otherwise HF + LoRA repo)
+cache_dir = configs['model']['cache_dir']
+ckpts = sorted(glob.glob(os.path.join(cache_dir, "*.ckpt")))
+
 tokenizer = AutoTokenizer.from_pretrained(configs['model']['base_model'])
 if tokenizer.pad_token_id is None:
     tokenizer.pad_token_id = tokenizer.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
 PAD = tokenizer.pad_token_id
-
-stop_ids = {tokenizer.eos_token_id}
-eot_id = tokenizer.convert_tokens_to_ids("<end_of_turn>")
-if isinstance(eot_id, int) and eot_id != tokenizer.unk_token_id and eot_id >= 0:
-    stop_ids.add(eot_id)  
 
 policy_model = AutoModelForCausalLM.from_pretrained(
     configs['model']['base_model'],
@@ -31,15 +32,41 @@ policy_model = AutoModelForCausalLM.from_pretrained(
     cache_dir=configs['model']['cache_dir']
 )
 
-model = PeftModel.from_pretrained(
-    policy_model,
-    configs['model']['lora_repo'],
-    device_map=None,
-    cache_dir=configs['model']['cache_dir']
-)
+if ckpts:
+    ckpt_path = ckpts[-1]
+
+    lora_config = LoraConfig(
+        r=configs['model']['lora_r'],                       # rank (8–32 are common) I did 16 here
+        lora_alpha=configs['model']['lora_alpha'],              # scaling (16–64 typical) I did 32 here
+        lora_dropout=configs['model']['lora_dropout'],          # regularization, I did 0.05 here
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=[
+            "q_proj","k_proj","v_proj","o_proj",     # attention
+            "gate_proj","up_proj","down_proj"        # MLP
+        ],
+    )
+
+    model = get_peft_model(policy_model, lora_config)
+    state_dict = torch.load(ckpt_path, map_location=configs['model']['device'])['state_dict']
+    state_dict = {'.'.join(k.split('.')[1:]): v for k, v in state_dict.items()}
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+else:
+    model = PeftModel.from_pretrained(
+        policy_model,
+        configs['model']['lora_repo'],
+        device_map=None,
+        cache_dir=configs['model']['cache_dir']
+    )
 
 model_device = configs['model']['device']
 model.eval().to(model_device)
+
+stop_ids = {tokenizer.eos_token_id}
+eot_id = tokenizer.convert_tokens_to_ids("<end_of_turn>")
+if isinstance(eot_id, int) and eot_id != tokenizer.unk_token_id and eot_id >= 0:
+    stop_ids.add(eot_id)
 
 ###Step 2: Load in eval data in Inference DataLoader
 
@@ -150,10 +177,14 @@ for step, (prompts, answers) in enumerate(tqdm(test_dataloader, total=len(test_d
 
         for (y_true, rec_id), txt, ques, out, stability in zip(kept_answers, batch_responses, raw_inputs, raw_outputs, stability_score):
             p = extract_prob(txt)
+            if p is None:
+                p = 0.5
+            b = 0
             try:
                 b = int(p > 0.5)
-            except Exception as e:
-                import pdb; pdb.set_trace()
+            except Exception:
+                import pdb
+                pdb.set_trace()
 
             prob_preds.append(p)
             binary_preds.append(b)
@@ -183,7 +214,8 @@ if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
         #Take the AUCs of the patients where stability or confidence is high
         for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
             filtered_probs = [mp for mp, ss in zip(modified_probability, stability_scores) if ss >= threshold]
-            filtered_labels = [l for mp, ss, l in zip(modified_probability, stability_scores, labels) if ss >= threshold]
-            print(f"Filtered AUC (stability >= {threshold}):", roc_auc_score(filtered_labels, filtered_probs))
+            filtered_labels = [lbl for mp, ss, lbl in zip(modified_probability, stability_scores, labels) if ss >= threshold]
+            if len(set(filtered_labels)) > 1:
+                print(f"Filtered AUC (stability >= {threshold}):", roc_auc_score(filtered_labels, filtered_probs))
 
     print("Accuracy:", accuracy_score(labels, [int(x) for x in binary_preds]))

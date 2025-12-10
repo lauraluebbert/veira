@@ -14,7 +14,15 @@ PROB_RE = re.compile(
     r'(?mi)^\s*(?:p_virus|p_viral)\s*[:=]\s*([01](?:\.\d+)?|\.\d+)f?\s*$'
 )
 
+VIRUS_RE = re.compile(
+    r'(?mi)^\s*(?:virus|viral)\s*[:=]\s*([01](?:\.\d+)?|\.\d+)f?\s*$'
+)   
+
 def extract_prob(text: str):
+    if text == '95':
+        return 0.95
+    if text == '90':
+        return 0.90
     # 1. Try bare decimal first
     m = BARE_DECIMAL_RE.findall(text)
     if m:
@@ -26,6 +34,14 @@ def extract_prob(text: str):
 
     # 2. Fallback: p_virus: XXX parsing
     m = PROB_RE.findall(text)
+    if m:
+        try:
+            p = float(m[-1].rstrip("f"))
+            return max(0.0, min(1.0, p))
+        except Exception:
+            pass
+    
+    m = VIRUS_RE.findall(text)
     if m:
         try:
             p = float(m[-1].rstrip("f"))
