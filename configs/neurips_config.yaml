@@ -3,7 +3,11 @@ model:
   lora_repo: "Sentinel-AI/neurips_grpo_model"
   device: "cuda:0" # Add empty gpu after running nvidia smi
   max_new_tokens: 96
-  cache_dir: "/ewsc/lluebber/sentinel-checkpoints/GRPO-Neurips/"
+  cache_dir: "/ewsc/yektefai/sentinel-checkpoints/sft_old_data/"
+  lora_r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+
 
 data:
   train_test_data_folder: "/ewsc/lluebber/projects/snow/data/test_train_splits_llm_v2/"
