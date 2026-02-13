@@ -11,7 +11,6 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
    - [Step 1: Environment Setup](#step-1-environment-setup)
    - [Step 2: Modify the Config](#step-2-modify-the-config)
    - [Step 3: Run Inference](#step-3-run-inference)
-4. [SFT Model (New Data)](#sft-model-new-data)
 
 ---   
 
@@ -22,12 +21,10 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
     ├── README.md
     ├── LICENSE
     ├── configs/
-    │   ├── neurips_config.yaml
-    │   └── new_data_config.yaml
+    │   └── neurips_config.yaml
     ├── data/
     │   └── dataset.py
     ├── utils/
-    │   ├── constants.py
     │   ├── prompts.py
     │   ├── utils.py
     │   └── create_vignette.py
@@ -94,15 +91,10 @@ This repository contains the code used in the paper "Pandemic-Potential Viruses 
 * `neurips_config.yaml`  
   Config file for load and running RL-tuned Gemma4B model presented at neurips, use this config to get same results
 
-* `new_data_config.yaml`  
-  Config file for the SFT-tuned MedGemma model trained on the updated dataset (no-malaria split). Uses `Sentinel-AI/sft_new_data` checkpoint.
-
 #### `utils/`
 
 * `create_vignette.py`  
   Helper functions for generating patient vignette that is ultimately fed to Gemma4B.
-* `constants.py`  
-  List of label and metadata columns to exclude from patient data before vignette generation.
 * `prompts.py`  
   Stores system prompts used for Gemma4B model.
 * `utils.py`  
@@ -171,31 +163,5 @@ The script will:
 Typical runtime is ~2 minutes on a single modern GPU (A100 or H100 but can work on smaller GPUs).
 
 ---
-### SFT Model (New Data)
 
-An SFT-tuned MedGemma model (`google/medgemma-1.5-4b-it`) trained on the updated dataset with malaria cases excluded is also available. The checkpoint is hosted at [Sentinel-AI/sft_new_data](https://huggingface.co/Sentinel-AI/sft_new_data).
-
-To run inference with this model:
-
-1. Ensure your HuggingFace account has access to [google/medgemma-1.5-4b-it](https://huggingface.co/google/medgemma-1.5-4b-it) and [Sentinel-AI/sft_new_data](https://huggingface.co/Sentinel-AI/sft_new_data).
-
-2. Edit `configs/new_data_config.yaml` — update `data` paths and `model.cache_dir` to match your environment.
-
-3. Run:
-
-```bash
-python -m src.run_gemma_inference configs/new_data_config.yaml
-```
-
-The script will automatically download the `.ckpt` from HuggingFace on first run and cache it locally. Subsequent runs will use the cached checkpoint.
-
-**Note:** The inference script accepts any config file as its first argument:
-
-```bash
-python -m src.run_gemma_inference configs/<your_config>.yaml
-```
-
-If no argument is provided it defaults to `configs/neurips_config.yaml`.
-
----
 Fun fact: “Veira” means “virus” in Icelandic (h/t Kristján Eldjárn Hjörleifsson)

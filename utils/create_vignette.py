@@ -1,3 +1,7 @@
+import sys
+from utils.utils import row_to_json
+import pandas as pd
+
 def find_keys_to_scan(data):
     keys_to_scan = []
     for key in data:
@@ -103,8 +107,8 @@ def generate_patient_data_vignette(patient_data, df_field_definitions):
                     patient_vignette += 'The patients stores food in covered containers. '
                 elif i == 'eat_rodent' and 1 in pat_dat:
                     patient_vignette += 'The patients has eaten rodents. '
-                elif (i == 'mosquito_bite' and 1 in pat_dat) or (i == 'mosquitobite' and 1 in pat_dat):
-                    patient_vignette += 'The patients has bite marks of mosquitos. '
+                elif i == 'mosquito_bite' and 1 in pat_dat:
+                    patient_vignette += 'The patients has bite marks of mosquitos or other insects. '
                 elif i == 'food_sacs' and 1 in pat_dat:
                     patient_vignette += 'The patients stores food in food sacs. '
                 elif i == 'family_fluids' and 1 in pat_dat:
@@ -133,79 +137,6 @@ def generate_patient_data_vignette(patient_data, df_field_definitions):
                     patient_vignette += 'The patients has attended to a sick person as a healthcare worker. '
                 elif i == 'surgery' and 1 in pat_dat:
                     patient_vignette += 'The patients has undergone surgery. '
-                elif i[-1] == 'c' and i != 'hc' and None not in pat_dat:
-                    if len(pat_dat) > 1:
-                        print(f"Expected only one value for '{i}', but got multiple.")
-                        import pdb; pdb.set_trace()
-                    if len(pat_dat[0]) > 1 and i == 'domestic_contactc':
-                        patient_vignette += f'The patients has had contact with domestic animals: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'othersymptomsc':
-                        patient_vignette += f'The patients has symptoms including: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'feverc':
-                        patient_vignette += f'The patients fever has the following properties: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'jointc':
-                        patient_vignette += f'The patient has joint pain in the following areas: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'headachec':
-                        patient_vignette += f'The patient has headache with the following properties: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'musclec':
-                        patient_vignette += f'The patient has muscle pain in the following areas: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'vomitc':
-                        patient_vignette += f'The patient has vomited with the following properties: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'coughc':
-                        patient_vignette += f'The patient has cough with the following properties: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'nosec':
-                        patient_vignette += f'The patient has nasal symptoms with the following properties: {", ".join(pat_dat[0])}. '
-                    elif len(pat_dat[0]) > 1 and i == 'wild_contactc':
-                        patient_vignette += f'The patient has had contact with wild animals including: {", ".join(pat_dat[0])}. '
-                    else:
-                        patient_vignette += f'The patients has {pat_dat[0].lower()}. '
-                elif i == 'age_crf' and None not in pat_dat:
-                    if len(pat_dat) > 1:
-                        print("Expected only one value for 'age_crf', but got multiple.")
-                        import pdb; pdb.set_trace()
-                    patient_vignette += f'The patients age is {pat_dat[0]}. '
-                elif i == 'eat_bush' and 1 in pat_dat:
-                    patient_vignette += 'The patients has recently eaten bush meat. '
-                elif i == 'funeral' and 1 in pat_dat:
-                    patient_vignette += 'The patients has attended a funeral recently. '
-                elif i == 'oxygen_saturation':
-                    patient_vignette += f'The patients oxygen saturation is {pat_dat[0]}. '
-                elif i == 'ph_urin':
-                    patient_vignette += f'The patients urine pH is {pat_dat[0]}. '
-                elif i == 'rodent_contact' and 1 in pat_dat:
-                    patient_vignette += 'The patients has had contact with rodents. '
-                elif i == 'spgr_urin':
-                    patient_vignette += f'The patients urine specific gravity is {pat_dat[0]}. '
-                elif i == 'urobilinogen_urin':
-                    patient_vignette += f'The patients urine urobilinogen level is {pat_dat[0]}. '
-                elif (i == 'insecticides' and 1 in pat_dat) or (i == 'insecticide' and 1 in pat_dat):
-                    patient_vignette += 'The patients has been exposed to insecticides. '
-                elif i == 'med1' and None not in pat_dat:
-                    patient_vignette += f'The patients has taken {pat_dat[0]} medication. '
-                elif i == 'med2' and None not in pat_dat:
-                    patient_vignette += f'The patients has taken {pat_dat[0]} medication. '
-                elif i == 'meds' and 1 in pat_dat:
-                    patient_vignette += 'The patients has taken medications. '
-                elif i == 'time1' and None not in pat_dat:
-                    patient_vignette += f'The patient has taken their first medication for {pat_dat[0]}. '
-                elif i == 'time2' and None not in pat_dat:
-                    patient_vignette += f'The patient has taken their second medication for {pat_dat[0]}. '
-                elif i == 'ethnicityc_crf' and None not in pat_dat:
-                    if len(pat_dat) > 1:
-                        print("Expected only one value for 'ethnicityc_crf', but got multiple.")
-                    patient_vignette += f'The patients ethnicity is {pat_dat[0].lower()}. '
-                elif i == 'other_occupation2' and None not in pat_dat:
-                    if len(pat_dat) > 1:
-                        print("Expected only one value for 'other_occupation2', but got multiple.")
-                    patient_vignette += f'The patients occupation is {pat_dat[0].lower()}. '
-                elif i == 'diagnosis_history' and None not in pat_dat:
-                    patient_vignette += f'The patients has a history of diagnoses including: {", ".join(pat_dat[0])}. '
-                elif i == 'othersymptoms_details' and None not in pat_dat:
-                    patient_vignette += f'The patients has other symptoms including: {", ".join(pat_dat[0])}. '
-                elif (i == 'med3' and None not in pat_dat) or (i == 'med4' and None not in pat_dat):
-                    patient_vignette += f'The patients has taken {pat_dat[0]} medication. '
-                elif None not in pat_dat and 0 not in pat_dat:
-                    import pdb; pdb.set_trace()
         except Exception as e:
             print(f'Errored here with this error {e} for this {i}')
             import pdb; pdb.set_trace()

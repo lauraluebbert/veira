@@ -7,7 +7,6 @@ from typing import Callable, Optional
 from utils.utils import row_to_json
 from utils.create_vignette import generate_patient_data_vignette
 from utils.prompts import TASK_SPECIFIC_INSTRUCTIONS
-from utils.constants import columns_to_exclude
 from src.utils import data_to_use
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.pipeline import Pipeline
@@ -26,11 +25,10 @@ class WrapperDataset(Dataset):
 
     def __getitem__(self, idx):
         row = self.X.iloc[idx]
-        record_id = row['record_id']
-        row = row.drop(columns_to_exclude, errors='ignore')
         answer = self.y.iloc[idx]
-        prompt = row_to_json(row)
-        return prompt, [int(answer), record_id]
+        prompt = row_to_json(row.drop(labels=["record_id"]))
+        # return (prompt, [answer, record_id])
+        return prompt, [int(answer), row["record_id"]]
 
 class BalancedBatchSampler(Sampler):
     """Yields index lists with 50% positives / 50% negatives (replacement if needed)."""
@@ -96,14 +94,10 @@ class InferenceDataset(Dataset):
         tokenizer: Callable = None,
         pathogen: str = "all-viral",
         sheet_name: str = "columns_metadata",
-        new_data: bool = False,
-        no_malaria: bool = False,
     ):
         self.data_df = pd.read_csv(data_path)
         self.col_meta = pd.read_excel(col_meta_path, sheet_name=sheet_name)
         self.data_dict = pd.read_csv(data_dictionary_path)
-        self.new_data = new_data
-        self.no_malaria = no_malaria
         self.generate_field_definitions()
 
         self.pathogen = pathogen
@@ -194,71 +188,20 @@ class InferenceDataset(Dataset):
 
     def process_dataset(self, train_test_data_folder, include = False):
         pathogen = self.pathogen if hasattr(self, "pathogen") else "all-viral"
-
-        # Use the same file-naming convention as llm_training:
-        # when no_malaria is set, load the "-malaria" suffixed files.
-        if self.no_malaria:
-            files_to_open = [
-                f"{train_test_data_folder}/X_train_{pathogen}.pkl",
-                f"{train_test_data_folder}/X_test_{pathogen}.pkl",
-                f"{train_test_data_folder}/y_train_{pathogen}.pkl",
-                f"{train_test_data_folder}/y_test_{pathogen}.pkl",
-            ]
-        else:
-            files_to_open = [
-                f"{train_test_data_folder}/X_train_{pathogen}.pkl",
-                f"{train_test_data_folder}/X_test_{pathogen}.pkl",
-                f"{train_test_data_folder}/y_train_{pathogen}.pkl",
-                f"{train_test_data_folder}/y_test_{pathogen}.pkl",
-            ]
-
-        if self.new_data:
-            # ---- new_data path: join pickle record_ids with the full CSV ----
-            # This mirrors llm_training/finetuning/data/dataset.py exactly.
-            with open(files_to_open[0], "rb") as f:
-                X_train_pkl = pickle.load(f)
-                original_order = X_train_pkl['record_id'].astype(str).tolist()
-                X_train_raw = self.data_df[self.data_df['record_id'].astype(str).isin(original_order)]
-                X_train_raw = X_train_raw.copy()
-                X_train_raw['record_id_str'] = X_train_raw['record_id'].astype(str)
-                X_train_raw = X_train_raw.set_index('record_id_str').loc[original_order].reset_index(drop=True)
-                if X_train_raw.shape[0] != X_train_pkl.shape[0]:
-                    raise ValueError("Mismatch in training data sizes after filtering by record_id.")
-
-            with open(files_to_open[1], "rb") as f:
-                X_test_pkl = pickle.load(f)
-                original_order = X_test_pkl['record_id'].astype(str).tolist()
-                X_test_raw = self.data_df[self.data_df['record_id'].astype(str).isin(original_order)]
-                X_test_raw = X_test_raw.copy()
-                X_test_raw['record_id_str'] = X_test_raw['record_id'].astype(str)
-                X_test_raw = X_test_raw.set_index('record_id_str').loc[original_order].reset_index(drop=True)
-                if X_test_raw.shape[0] != X_test_pkl.shape[0]:
-                    raise ValueError("Mismatch in test data sizes after filtering by record_id.")
-
-            with open(files_to_open[2], "rb") as f:
-                y_train = pickle.load(f)
-            with open(files_to_open[3], "rb") as f:
-                y_test = pickle.load(f)
-
-            X_train = X_train_raw.copy()
-            X_test = X_test_raw.copy()
-
-            return X_train, X_train_raw, X_test, X_test_raw, y_train, y_test
-
-        # ---- legacy path (original data, no join) ----
         num_cols_present, cat_cols_present = self.get_standard_features()
 
-        with open(files_to_open[0], "rb") as f:
+        with open(f"{train_test_data_folder}/X_train_{pathogen}.pkl", "rb") as f:
             X_train_raw = pickle.load(f)
+            # Drop record_id column
             if "record_id" in X_train_raw.columns and include is False:
                 X_train_raw = X_train_raw.drop(columns=["record_id"])
-        with open(files_to_open[1], "rb") as f:
+        with open(f"{train_test_data_folder}/X_test_{pathogen}.pkl", "rb") as f:
             X_test_raw = pickle.load(f)
             if "record_id" in X_test_raw.columns and include is False:
                 X_test_raw = X_test_raw.drop(columns=["record_id"])
-        with open(files_to_open[2], "rb") as f:
+        with open(f"{train_test_data_folder}/y_train_{pathogen}.pkl", "rb") as f:
             y_train = pickle.load(f)
-        with open(files_to_open[3], "rb") as f:
+        with open(f"{train_test_data_folder}/y_test_{pathogen}.pkl", "rb") as f:
             y_test = pickle.load(f)
 
         # Fit preprocessor on training data and process X

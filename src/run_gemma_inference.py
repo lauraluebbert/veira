@@ -1,27 +1,23 @@
 import yaml
-import sys
-import os
-import numpy as np
 from transformers import AutoModelForCausalLM, AutoTokenizer
 import torch
 from peft import PeftModel
 from data.dataset import InferenceDataset
 from tqdm import tqdm
 from utils.utils import extract_prob
-from sklearn.metrics import roc_auc_score, accuracy_score, brier_score_loss
+from sklearn.metrics import roc_auc_score, accuracy_score
+import os
 import glob
 from peft import get_peft_model, LoraConfig
 
 os.environ["TORCHDYNAMO_DISABLE"] = "1"
 import pickle
 
-# ---- Accept config path as CLI argument (default: neurips_config.yaml) ----
-config_path = sys.argv[1] if len(sys.argv) > 1 else 'configs/neurips_config.yaml'
-print(f"Loading config from: {config_path}")
-configs = yaml.load(open(config_path), Loader=yaml.FullLoader)
+configs = yaml.load(open('configs/neurips_config.yaml'), Loader=yaml.FullLoader)
 
 ###Step 1: Load model (prefer local .ckpt via load_model, otherwise HF + LoRA repo)
 cache_dir = configs['model']['cache_dir']
+ckpts = sorted(glob.glob(os.path.join(cache_dir, "*.ckpt")))
 
 tokenizer = AutoTokenizer.from_pretrained(configs['model']['base_model'])
 if tokenizer.pad_token_id is None:
@@ -36,44 +32,33 @@ policy_model = AutoModelForCausalLM.from_pretrained(
     cache_dir=configs['model']['cache_dir']
 )
 
-lora_config = LoraConfig(
-    r=configs['model']['lora_r'],
-    lora_alpha=configs['model']['lora_alpha'],
-    lora_dropout=configs['model']['lora_dropout'],
-    bias="none",
-    task_type="CAUSAL_LM",
-    target_modules=[
-        "q_proj","k_proj","v_proj","o_proj",
-        "gate_proj","up_proj","down_proj"
-    ],
-)
-
-model = get_peft_model(policy_model, lora_config)
-
-# Check for a local .ckpt first, then download from HuggingFace repo
-ckpts = sorted(glob.glob(os.path.join(cache_dir, "*.ckpt")))
-
 if ckpts:
     ckpt_path = ckpts[-1]
-    print(f"Loading local checkpoint: {ckpt_path}")
-else:
-    # Download .ckpt from HuggingFace repo
-    from huggingface_hub import hf_hub_download, list_repo_files
-    repo_id = configs['model']['lora_repo']
-    print(f"Downloading checkpoint from HuggingFace: {repo_id}")
-    repo_files = list_repo_files(repo_id)
-    ckpt_files = [f for f in repo_files if f.endswith('.ckpt')]
-    if not ckpt_files:
-        raise FileNotFoundError(f"No .ckpt files found in HuggingFace repo: {repo_id}")
-    ckpt_path = hf_hub_download(repo_id=repo_id, filename=ckpt_files[-1], cache_dir=cache_dir)
-    print(f"Downloaded checkpoint to: {ckpt_path}")
 
-state_dict = torch.load(ckpt_path, map_location=configs['model']['device'])
-# Handle Lightning checkpoint format (keys prefixed with 'model.')
-if 'state_dict' in state_dict:
-    state_dict = state_dict['state_dict']
+    lora_config = LoraConfig(
+        r=configs['model']['lora_r'],                       # rank (8–32 are common) I did 16 here
+        lora_alpha=configs['model']['lora_alpha'],              # scaling (16–64 typical) I did 32 here
+        lora_dropout=configs['model']['lora_dropout'],          # regularization, I did 0.05 here
+        bias="none",
+        task_type="CAUSAL_LM",
+        target_modules=[
+            "q_proj","k_proj","v_proj","o_proj",     # attention
+            "gate_proj","up_proj","down_proj"        # MLP
+        ],
+    )
+
+    model = get_peft_model(policy_model, lora_config)
+    state_dict = torch.load(ckpt_path, map_location=configs['model']['device'])['state_dict']
     state_dict = {'.'.join(k.split('.')[1:]): v for k, v in state_dict.items()}
-model.load_state_dict(state_dict, strict=True)
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+else:
+    model = PeftModel.from_pretrained(
+        policy_model,
+        configs['model']['lora_repo'],
+        device_map=None,
+        cache_dir=configs['model']['cache_dir']
+    )
 
 model_device = configs['model']['device']
 model.eval().to(model_device)
@@ -94,8 +79,6 @@ test_dataloader = InferenceDataset(train_test_data_folder = configs['data']['tra
                                    data_path = configs['data']['data_path'],
                                    col_meta_path = configs['data']['col_meta_path'],
                                    data_dictionary_path = configs['data']['data_dictionary_path'],
-                                   new_data = configs['data'].get('new_data', False),
-                                   no_malaria = configs['data'].get('no_malaria', False),
                                    tokenizer=tokenizer).test_dataloader()
 
 ###Step 3: Set up results file and see if any results have already been generated
@@ -114,13 +97,7 @@ if os.path.exists(name_result):
     label = []
     finished_files = []
     for line in open(name_result, 'r'):
-        parts = line.strip().split('\t')
-        if len(parts) < 4:
-            continue
-        id = parts[0]
-        prob = parts[1]
-        binary = parts[2]
-        true_label = parts[3]
+        id, prob, binary, true_label = line.split('\t')
         finished_files.append(id)
         pred_prob.append(float(prob))
         pred_binary.append(int(float(binary)))
@@ -229,41 +206,16 @@ pickle.dump(
     open(f'{configs["eval"]["eval_name"]}.pkl', 'wb')
 )
 
-# ---- Harmonised summary (matches llm_training eval output) ----
-total_examples = len(labels)
-total_failed = sum(1 for p in prob_preds if p == 0.5)  # failed parses defaulted to 0.5
-failure_rate = total_failed / total_examples if total_examples else 0.0
-
-if total_examples > 0 and len(set([int(x) for x in labels])) > 1:
+if len(labels) > 0 and len(set([int(x) for x in labels])) > 1:
     clean_probs = [x for x in prob_preds if isinstance(x, float)]
-    int_labels = [int(x) for x in labels]
-    bin_preds = [int(x) for x in binary_preds]
+    if len(clean_probs) == len(prob_preds):
+        print("AUC:", roc_auc_score(labels, prob_preds))
+        print("Modified AUC:", roc_auc_score(labels, modified_probability))
+        #Take the AUCs of the patients where stability or confidence is high
+        for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+            filtered_probs = [mp for mp, ss in zip(modified_probability, stability_scores) if ss >= threshold]
+            filtered_labels = [lbl for mp, ss, lbl in zip(modified_probability, stability_scores, labels) if ss >= threshold]
+            if len(set(filtered_labels)) > 1:
+                print(f"Filtered AUC (stability >= {threshold}):", roc_auc_score(filtered_labels, filtered_probs))
 
-    auc = roc_auc_score(int_labels, prob_preds)
-    acc = accuracy_score(int_labels, bin_preds)
-    brier = brier_score_loss(int_labels, prob_preds)
-    pos = [p for p, l in zip(prob_preds, int_labels) if l == 1]
-    neg = [p for p, l in zip(prob_preds, int_labels) if l == 0]
-
-    print("\n" + "=" * 60)
-    print("  EVALUATION RESULTS")
-    print("=" * 60)
-    print(f"  Total examples : {total_examples}")
-    print(f"  Parse failures : {total_failed} ({failure_rate:.2%})")
-    print(f"  AUC            : {auc:.4f}")
-    print(f"  Accuracy       : {acc:.4f}")
-    print(f"  Brier Score    : {brier:.4f}")
-    print(f"  Mean P (pos)   : {np.mean(pos):.4f}" if pos else "  Mean P (pos)   : N/A")
-    print(f"  Mean P (neg)   : {np.mean(neg):.4f}" if neg else "  Mean P (neg)   : N/A")
-    print(f"  Pos-Neg Gap    : {np.mean(pos) - np.mean(neg):.4f}" if (pos and neg) else "  Pos-Neg Gap    : N/A")
-    print(f"  Failure Rate   : {failure_rate:.4f}")
-    print("=" * 60)
-
-    # Modified AUC with stability scores
-    print(f"\n  Modified AUC   : {roc_auc_score(int_labels, modified_probability):.4f}")
-    for threshold in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-        filtered_probs = [mp for mp, ss in zip(modified_probability, stability_scores) if ss >= threshold]
-        filtered_labels = [lbl for mp, ss, lbl in zip(modified_probability, stability_scores, labels) if ss >= threshold]
-        if len(set(filtered_labels)) > 1:
-            print(f"  Filtered AUC (stability >= {threshold}): {roc_auc_score(filtered_labels, filtered_probs):.4f}")
-    print("=" * 60 + "\n")
+    print("Accuracy:", accuracy_score(labels, [int(x) for x in binary_preds]))
